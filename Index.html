@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thematic Analysis System</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000000; 
+        }
+        
+        /* === HERO STYLES (Split Screen) === */
+        #hero-container {
+            width: 100%;
+            height: 100vh;
+            display: grid;
+            grid-template-columns: 1fr; /* Mobile: 1 column */
+            align-items: center;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+
+        #hero-text-panel {
+            text-align: center;
+            max-width: 600px;
+            margin: 0 auto; /* Center the text block */
+        }
+        
+        /* --- THIS IS THE ROBUST 2x2 GRID BLOCK --- */
+        #hero-grid-panel {
+            width: 100%;
+            height: 100%;
+            max-width: 450px; /* Constrain max size */
+            max-height: 450px;
+            aspect-ratio: 1 / 1; /* Keep it square */
+            margin: 2rem auto 0 auto; /* Space from text on mobile, centered */
+            
+            --grid-border-color: #374151; /* Your original border color */
+            --grid-line-color: rgba(255, 255, 255, 0.2); /* Subtle white lines (20% opacity) */
+            
+            background-image: 
+                /* Vertical line */
+                linear-gradient(to right, var(--grid-line-color) 1px, transparent 1px),
+                /* Horizontal line */
+                linear-gradient(to bottom, var(--grid-line-color) 1px, transparent 1px);
+
+            background-size: 
+                1px 100%,  /* Vertical line is 1px wide, 100% tall */
+                100% 1px; /* Horizontal line is 100% wide, 1px tall */
+            
+            background-position: 
+                center center,  /* Center the vertical line */
+                center center;  /* Center the horizontal line */
+                
+            background-repeat: no-repeat;
+            border: 1px solid var(--grid-border-color); /* We keep the original border */
+        }
+        /* --- END OF UPDATED BLOCK --- */
+
+
+        @media (min-width: 768px) { /* md: breakpoint */
+            #hero-container {
+                grid-template-columns: 1fr 1fr; 
+                padding: 4rem;
+                gap: 2rem;
+            }
+            #hero-text-panel {
+                text-align: left;
+                margin: 0; 
+                padding-left: 10%; 
+            }
+            #hero-grid-panel {
+                margin: 0 auto; 
+            }
+        }
+        /* === END HERO LAYOUT STYLES === */
+
+        
+        /* --- Analysis Content Styles --- */
+        .theme-card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .theme-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(255, 255, 255, 0.05), 0 4px 6px -2px rgba(255, 255, 255, 0.05);
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #explanation-modal {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        
+        #constellation-canvas-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #374151;
+            border-radius: 1rem;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+        #constellation-canvas-container:active {
+            cursor: grabbing;
+        }
+        #constellation-canvas-container canvas {
+            display: block;
+        }
+        
+        #info-box {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 250px;
+            background-color: rgba(20, 20, 30, 0.85);
+            border: 1px solid #4a5568;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            color: #e2e8f0;
+            display: none;
+            font-family: 'Inter', sans-serif;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+        #info-box h4 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+        }
+        #info-box p {
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: #cbd5e1;
+        }
+        #info-box-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 1.5rem;
+            color: #718096;
+            cursor: pointer;
+            line-height: 1;
+        }
+        #info-box-close:hover {
+            color: #e2e8f0;
+        }
+        
+        /* --- Accordion Styles --- */
+        .category-content {
+            display: none;
+        }
+        /* MODIFIED: Made wrapper padding reusable */
+        .category-content-wrapper {
+            padding: 1.5rem 1.5rem 1.5rem 2.5rem; 
+        }
+        .category-group.open .category-content {
+            display: block;  
+        }
+        .category-group.open .plus-icon {
+            display: none;
+        }
+        .category-group.open .minus-icon {
+            display: block;
+        }
+        .minus-icon {
+            display: none;
+        }
+        
+        /* --- Button Glow --- */
+        .btn-glow {
+            box-shadow: 0 4px 15px 0 rgba(59, 130, 246, 0.3), 0 4px 15px 0 rgba(147, 51, 234, 0.3);
+            transition: all 0.3s ease-in-out;
+        }
+        .btn-glow:hover {
+             box-shadow: 0 6px 25px 0 rgba(59, 130, 246, 0.5), 0 6px 25px 0 rgba(147, 51, 234, 0.5);
+        }
+        /* NEW: Style for disabled submit button */
+        .btn-glow:disabled {
+            opacity: 0.5;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        /* --- New Conflict Button Style --- */
+        #conflict-help-btn {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        #conflict-help-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); /* Blue glow */
+        }
+
+    
+        #hero-grid-panel {
+            position: relative;
+            overflow: hidden;
+        }
+        #hero-grid-panel canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #glb-status {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            color: #6b7280;
+            text-align: center;
+            pointer-events: none;
+            padding: 0 1rem;
+        }
+
+    </style>
+</head>
+<body class="bg-black text-gray-300">
+
+    <nav class="relative z-30">
+        <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+            <div class="flex justify-between items-center">
+                <a href="#" class="text-white">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </a>
+                <div class="flex items-center space-x-6 md:space-x-10">
+                    <a href="#" class="text-gray-300 hover:text-white transition-colors text-sm md:text-base font-medium">Cosmos Development</a>
+                    <a href="#" class="text-gray-300 hover:text-white transition-colors text-sm md:text-base font-medium">Story</a>
+                    <a href="#" class="text-gray-300 hover:text-white transition-colors text-sm md:text-base font-medium">Contact Us</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <section id="hero-container" class="-mt-20 md:-mt-24"> <div id="hero-text-panel">
+            <h1 class="text-5xl md:text-7xl font-bold text-white">
+                Engineer Your Brand Cosmos
+            </h1>
+            <p class="text-xl md:text-2xl text-gray-400 mt-4">
+                Transform insights into cosmic strategy
+            </p>
+        </div>
+
+        <div id="hero-grid-panel">
+            <canvas id="floating-object-canvas"></canvas>
+            <div id="glb-status">Loading Conflict.glb…</div>
+        </div>
+
+    </section>
+    <section class="container mx-auto p-4 md:p-8 max-w-3xl my-16">
+        <h2 class="text-3xl font-bold text-white text-center mb-6">Understand The Core Concepts</h2>
+        <p class="text-gray-400 text-center mb-10 max-w-2xl mx-auto">
+            Before answering questions to build your cosmos and developing a universe, read these definitions. It is important for you to understand these terminologies since they might seem familiar but they have a different meaning in this context. 
+            These words will be used in questions and understanding them would help you to better answer questions and to have a more detailed cosmos.
+        </p>
+        <div class="space-y-6 text-gray-300 border border-gray-800 rounded-2xl p-6 md:p-8">
+            <div>
+                <strong class="text-white font-semibold text-lg">Protagonist:</strong>
+                <p class="mt-1 text-gray-400">A collective hero comprised of the brand and its audience, unified in their commitment to a core moral value and their fight against a defined 'darkness' or antagonist.</p>
+            </div>
+            <div>
+                <strong class="text-white font-semibold text-lg">Antagonist:</strong>
+                <p class="mt-1 text-gray-400">Not a specific person or competitor, but the opposing ideology, societal norm, or abstract concept that the protagonist is morally committed to fighting against. The conflict is a battle between two worldviews (e..g., Creativity vs. Conformity).</p>
+            </div>
+            <div>
+                <strong class="text-white font-semibold text-lg">Magic:</strong>
+                <p class="mt-1 text-gray-400">The specific, real-world 'how' or methodology the protagonist uses to combat the antagonist. It is not supernatural, but the unique tool, skill, or process that empowers them (e.g., for a brand promoting critical thinking, the 'magic' could be 'learning').</p>
+            </div>
+            <div>
+                <strong class="text-white font-semibold text-lg">Society:</strong>
+                <p class="mt-1 text-gray-400">Refers specifically to the self-contained universe or 'brand world' being created, with its own distinct history, rules, norms, and conflicts, separate from society at large.</p>
+            </div>
+            <div>
+                <strong class="text-white font-semibold text-lg">Value:</strong>
+                <p class="mt-1 text-gray-400">Refers exclusively to the core moral, ethical, and philosophical principles the protagonist stands for. It is the moral currency of the brand world that the audience aligns with for personal identity and social signaling, not a functional or monetary benefit.</p>
+            </div>
+        </div>
+    </section>
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <main>
+            <div class="max-w-3xl mx-auto px-4">
+
+                <h1 class="text-4xl md:text-5xl font-bold text-white text-center mb-12">Start Building Your Cosmos</h1>
+
+                <div class="mb-10 p-6 md:p-8 border border-gray-800 rounded-2xl">
+                    
+                    <h2 class="text-3xl font-bold text-white mb-2">Add The Conflict</h2>
+                    
+                    <div class="category-content-wrapper flex justify-between items-start space-x-6" style="padding: 0;">
+                        
+                        <div class="question-item flex-1">
+                            <span class="text-gray-300 text-sm font-medium">Define the core conflict of your brand cosmos. What is the central struggle or tension?</span>
+                            <div class="question-content-visible">
+                                <div class="answers-list space-y-3 py-2">
+                                    <textarea id="conflict-definition-textarea" class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="4" placeholder="What is the underlying conflict?"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="text-center flex-shrink-0">
+                            <button id="conflict-help-btn" class="w-8 h-8 rounded-full overflow-hidden border-2 border-gray-700 hover:border-blue-500 transition-all duration-300">
+                                <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAMAAAAJbSJIAAAAOVBMVEX///8AAADz8/P8/Pz39/f5+fnw8PD09PTNzc3c3Nzo6OjGxsapr6/f39+6urrh4eHExMS1tbXb29u2mH8AAAAC1klEQVR4nO2dW3LaMBBGMYQgYJvb/v9PNhssYMAkQJm7s+5MdLFYrgkppL17AQAAAAAAAAAAAAAAAAAAAACA/8vA/1MBrA8f5Ff+E+YJz2P+JbZ+DPfFp7G+lF+N0rMvH5X/59fC+kF+bZ+v1fG+fF1+Jb+L9Bf+N6Y/pa/N58y35vuJ+Yx/N9s/E/PdVv6c/z7/D34Z+X/8W/a/mP+f/C/EXx8m/s/l/xK/N/8t/q/B781/9f7vtxfoH8f7D/Yv5f/F/a/1H8t/k/1X8g/qv5v+p/nf7P87/X/1v+x/y/83/P/2/6H/B/7f/P/6/4f+F/x/7f/L/wf/f/b/sf8H/t/8/+j/kf8n/j/6/+P/kf8n/j/4/+f/R/8P/L/4/+X/R/8P/L/x/6f/B/5f/P/x/6P/B/5f+P/T/wP/v/h/4f/P/g/8v+H/T/8P/L/h/wX/3/x/8P/K/xf8f/D/xv8H/p/4/+L/g/8H/h/5/+T/g/8H/v/4/8P/L/5/+H/g/w3/L/x/4P/D/xf+H/i/5f+B/xf+v+H/hf8X/r/k/4X/F/7/6P+F/xf+P/p/4f+F/x/8f+H/lf8v/H/w/8L/K/9f+P/A/wt/AP8X/L/x/8D/C/8A/xf8v/D/wP8L/wD/F/y/8P/A/wt/AP8X/H/i/wP/L/wB/F/w/8L/A/8v/AH8X/D/wv8D/C38A/xf8v/D/wP8LfwD/F/y/8P/A/wt/AP8X/D/x/8D/C38A/xf8P/L/wP8LfwD/F/y/8f/A/wt/AP8X/L/y/8D/C38A/xf8f+L/gf8X/gD+L/h/5f+B/xf+AP4v+H/h/wH+X/gD+L/g/5X/B/5f+AP4v+D/lf8H+H/hD+D/gv/P/D/w/8IfwP8F/5/5f+D/hT+A/wv+P/P/wP8LfwD/F/x/5v+B/xf+AP4v+P/M/wP8v/AH8H/B/2f+H/h/4Q/g/4L/z/w/8P/CH8D/Bf+f+X/g/4U/gP8L/j/z/8D/C3MA/wD/F/x/5v+B/xf+AP4v+P/M/wP8L/wB/F/w/5n/B/h/4Q/g/4L/z/w/8P/CH8D/Bf+f+X/g/4U/gP8L/j/z/8D/C38A/xf8f+b/gf8X/gD+L/j/zP8D/C/8Afxf8P+Z/wf4f+EP4P+C/8/8P/D/wh/A/wX/n/l/4P+FP4D/C/4/8//A/wt/AP8X/H/m/4H/F/4A/i/4/8z/A/wv/AH8X/D/mf8H+H/hD+D/gv/P/D/w/8IfwP8F/5/5f+D/hT+A/wv+P/P/wP8LfwD/F/x/5v+B/xf+APgvwP1X438D/C+D/An8LwP8FGMs/BWqAvwUAAAAAAAAAAAAAAAAAAAAAPgH+hDWBTypeNbQAAAABJRU5ErkJggg==" alt="Conflict Planet" class="w-full h-full object-cover">
+                            </button>
+                            <p class="text-[10px] text-gray-400 mt-0.5">How to define<br>the conflict</p>
+                        </div>
+                    </div>
+
+                    <div class="text-right mt-4">
+                        <button id="submit-conflict-btn" class="btn-glow text-white font-bold py-2 px-6 rounded-full text-base transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">
+                            Submit
+                        </button>
+                    </div>
+
+                    <div id="submitted-conflict-display" class="hidden mt-6">
+                        <h4 class="text-lg font-semibold text-white">Submitted Conflict:</h4>
+                        <p id="conflict-output-text" class="text-gray-300 mt-2 p-4 bg-gray-900 border border-gray-700 rounded-lg whitespace-pre-wrap"></p>
+                    </div>
+
+                </div>
+                <div class="">
+                    
+                    <div class="category-group" id="category-1-group">
+                        <div class="category-header relative z-10 flex items-center py-6 cursor-pointer border-t border-b border-gray-800 transition-colors duration-200 hover:bg-gray-900">
+                            <div class="icon-container flex-shrink-0 mr-5">
+                                <svg class="plus-icon w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <svg class="minus-icon w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>
+                            </div>
+                            <h3 class="text-2xl font-semibold text-white">Homeland</h3>
+                        </div>
+                        <div class="category-content">
+                            <div class="category-content-wrapper space-y-6">
+                                <div class="question-item">
+                                    <span class="text-gray-300 text-sm font-medium">What does your brand stand for? What is it that you want to achieve that is aligned with your audience’s wants and values?</span>
+                                    <div class="question-content-visible">
+                                        <div class="answers-list space-y-3 py-2">
+                                            <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                        </div>
+                                        <div class="pt-2">
+                                            <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                                Add Another Reply
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">Who is the antagonist? (Think about norms, beliefs, cultural or political stances you want to change)</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What are the antagonist’s agendas? What do they see as good and evil?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What is it that you want to change in the outside world?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">Why do conflicts persist or change in this world?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What poses the greatest threat in this world? (This is something that has been part of everyone’s life, it is easy to follow).?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What are the natural resources? Which ones are scarce?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">When were the key turning points in this world's history?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">Why would someone study this world's history, what would it teach them?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What important inventions or advances have been made?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How does this fight affect your audience? (If the status quo stays the same)</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What is the status quo your brand is challenging? (Common beliefs/ norms)</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What do people vote for by buying your product?/ What are they buying into? (Community? Value?)</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What is the risk of doing nothing for the future generation and the whole world (nature)? What if, the antagonist wins?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                                <div class="question-item">
+                                    <span class="text-gray-300 text-sm font-medium">What is the antagonist's magical power?</span>
+                                    <div class="question-content-visible">
+                                        <div class="answers-list space-y-3 py-2">
+                                            <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                        </div>
+                                        <div class="pt-2">
+                                            <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                                Add Another Reply
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="category-group" id="category-2-group">
+                        <div class="category-header relative z-10 flex items-center py-6 cursor-pointer border-b border-gray-800 transition-colors duration-200 hover:bg-gray-900">
+                            <div class="icon-container flex-shrink-0 mr-5">
+                                <svg class="plus-icon w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <svg class="minus-icon w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>
+                            </div>
+                            <h3 class="text-2xl font-semibold text-white">Hierarchy</h3>
+                        </div>
+                        <div class="category-content">
+                            <div class="category-content-wrapper space-y-6">
+                                <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">List of all touch points- How much power do people have to personalize/alter/create within specific touch points? (Addressing the power/ passing the mic)</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How many levels are there in this society? What are they based on?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How can people be part of this society (citizenship rules) and how do they get deported? What are rights and privileges?(Addressing the level and ease of access)</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">If someone at the top changes, how might your audience relations change to the brand?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What are the tools, spaces, and expertise you provide to support them?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What can be a source of inequality? How is stratification created?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How do people move between different classes? How difficult is it to rise or fall from one social level to another? How much social mobility is there? How much do people think there is?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How would the world be different if they achieve their goals?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                                <div class="question-item">
+                                    <span class="text-gray-300 text-sm font-medium">What do they stand to lose?</span>
+                                    <div class="question-content-visible">
+                                        <div class="answers-list space-y-3 py-2">
+                                            <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                        </div>
+                                        <div class="pt-2">
+                                            <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                                Add Another Reply
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="category-group" id="category-3-group">
+                        <div class="category-header relative z-10 flex items-center py-6 cursor-pointer border-b border-gray-800 transition-colors duration-200 hover:bg-gray-900">
+                            <div class="icon-container flex-shrink-0 mr-5">
+                                <svg class="plus-icon w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <svg class="minus-icon w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>
+                            </div>
+                            <h3 class="text-2xl font-semibold text-white">Habitat</h3>
+                        </div>
+                        <div class="category-content">
+                            <div class="category-content-wrapper space-y-6">
+                                <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What would they do if they feel defeated? How do they cope? What motivates them to continue?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How do you unite your community to fight against the antagonists?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What are the educational resources you provide for the audience about your value/stand?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How do you ensure that people from the other side do not infiltrate the community? How do you ensure your audience’s safety?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What kind of magical power do your audience get?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">Who can and who is allowed to use magic? Is magic inherited, gifted, obtained or learned?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">Are there any hierarchies regarding the use/practice of magic?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How can the audience practice magic? Is it collective or individual? Do you have rituals or events to make it more collective?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What are the magical objects the audience and customers would get? (Think objects)</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">How do you create a platform to ensure your audience feels useful and valued (others can depend on them)? How do you ensure the communication between them happens?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What are the areas of conflict within the society and among the audience? How would they react in these instances?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                               <div class="question-item">
+                                   <span class="text-gray-300 text-sm font-medium">What are the social norms and rituals they practice?</span>
+                                   <div class="question-content-visible">
+                                       <div class="answers-list space-y-3 py-2">
+                                           <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                       </div>
+                                       <div class="pt-2">
+                                           <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                               Add Another Reply
+                                           </button>
+                                       </div>
+                                   </div>
+                               </div>
+                                <div class="question-item">
+                                    <span class="text-gray-300 text-sm font-medium">What are the shared language/words/objects they have that tie the audience together?</span>
+                                    <div class="question-content-visible">
+                                        <div class="answers-list space-y-3 py-2">
+                                            <textarea class="w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500" rows="3" placeholder="Reply 1..."></textarea>
+                                        </div>
+                                        <div class="pt-2">
+                                            <button class="add-reply-btn flex items-center text-sm font-medium text-gray-400 hover:text-gray-200 transition">
+                                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                                Add Another Reply
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center my-12">
+                <button id="analyze-btn" class="btn-glow text-white font-bold py-4 px-12 rounded-full text-lg transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">
+                    Generate Thematic Analysis
+                </button>
+            </div>
+            
+            <div id="results-section" class="hidden">
+                <div class="bg-gray-900 p-6 md:p-8 rounded-2xl shadow-lg border border-gray-800">
+                    <h2 class="text-3xl font-bold mb-6 text-center text-white">Analysis Results</h2>
+                    <div id="loading-indicator" class="hidden flex flex-col items-center justify-center my-8">
+                        <div class="loader"></div>
+                        <p class="mt-4 text-gray-400">Analyzing your responses... this may take a moment.</p>
+                    </div>
+                    <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-center" role="alert"></div>
+                    <div id="themes-display" class="hidden">
+                        <div class="mb-10" id="constellation-section">
+                            <h3 class="text-2xl font-bold text-center mb-5 text-white">Thematic Constellation</h3>
+                            <div id="constellation-canvas-container" style="border-color: #1f2937;">
+                                <div id="info-box" style="display: none;">
+                                    <div id="info-box-close">&times;</div>
+                                    <h4 id="info-box-title">Planet Title</h4>
+                                    <p id="info-box-analysis">Planet analysis text will go here.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-10" id="world-setting-section">
+                            <h3 class="text-2xl font-bold text-center mb-5 text-white">The World Setting</h3>
+                            <div class="bg-gray-800 border border-gray-700 p-6 rounded-xl shadow-sm space-y-3">
+                                <p class="text-gray-300"><strong class="font-semibold text-white">Socio-Political:</strong> <span id="ws-socio-political"></span></p>
+                                <p class="text-gray-300"><strong class="font-semibold text-white">Historical:</strong> <span id="ws-historical"></span></p>
+                                <p class="text-gray-300"><strong class="font-semibold text-white">Economic:</strong> <span id="ws-economic"></span></p>
+                                <p class="text-gray-300"><strong class="font-semibold text-white">Crime & Justice:</strong> <span id="ws-crime"></span></p>
+                                <p class="text-gray-300"><strong class="font-semibold text-white">Society & Culture:</strong> <span id="ws-society"></span></p>
+                            </div>
+                        </div>
+                        <div id="category-themes-container"></div>
+                        <div class="my-12" id="overarching-themes-section">
+                            <h3 class="text-2xl font-bold text-center mb-6 text-white">Overarching Holistic Themes</h3>
+                            <div class="space-y-6">
+                                <div class="bg-gray-800 border border-gray-700 p-6 rounded-xl shadow-sm theme-card overarching-theme-card">
+                                    <h4 class="text-xl font-bold text-white">The Prevailing Myth of the Society</h4>
+                                    <p class="text-gray-300 mt-3 leading-relaxed" id="ot-myth"></p>
+                                </div>
+                                <div class="bg-gray-800 border border-gray-700 p-6 rounded-xl shadow-sm theme-card overarching-theme-card">
+                                    <h4 class="text-xl font-bold text-white">The Power of Earned Agency & Empowerment</h4>
+                                    <p class="text-gray-300 mt-3 leading-relaxed" id="ot-agency"></p>
+                                </div>
+                                <div class="bg-gray-800 border border-gray-700 p-6 rounded-xl shadow-sm theme-card overarching-theme-card">
+                                    <h4 class="text-xl font-bold text-white">The Rituals of Identity and Belonging</h4>
+                                    <p class="text-gray-300 mt-3 leading-relaxed" id="ot-rituals"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="my-12" id="glimpse-section">
+                            <h3 class="text-2xl font-bold text-center mb-6 text-white">A Glimpse Into The World</h3>
+                            <div class="bg-gray-800 text-gray-200 p-8 rounded-2xl shadow-xl border border-gray-700">
+                                <p class="text-lg leading-loose font-serif" id="glimpse-text"></p>
+                            </div>
+                        </div>
+                        <div class="text-center mt-12">
+                            <button id="export-btn" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg text-md hover:bg-green-700 transition-transform transform hover:scale-105 shadow-md">
+                                Export Results
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </main>
+    </div>
+
+    <div id="explanation-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black opacity-50" id="modal-overlay"></div>
+        <div class="bg-gray-800 rounded-xl shadow-2xl p-6 md:p-8 max-w-2xl w-full z-10 border border-gray-700">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-2xl font-bold text-white" id="modal-title">Theme Sources</h3>
+                <button id="modal-close-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div id="modal-content" class="text-gray-300 max-h-[60vh] overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+
+        // --- Global State ---
+        let sessionAnswers = null; 
+        let animationFrameId = null; // For the constellation
+
+        // --- DOM Elements ---
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const resultsSection = document.getElementById('results-section');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const errorMessage = document.getElementById('error-message');
+        const themesDisplay = document.getElementById('themes-display');
+        const modal = document.getElementById('explanation-modal');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const modalOverlay = document.getElementById('modal-overlay');
+        
+        // --- MODIFIED: Submit Conflict Button Logic ---
+        const submitConflictBtn = document.getElementById('submit-conflict-btn');
+        if (submitConflictBtn) {
+            submitConflictBtn.addEventListener('click', () => {
+                const conflictText = document.getElementById('conflict-definition-textarea').value;
+                const displayWrapper = document.getElementById('submitted-conflict-display');
+                const outputTextElement = document.getElementById('conflict-output-text');
+                
+                // Only do something if there is text
+                if (conflictText.trim().length > 0) {
+                    // Set the text and show the display
+                    // Using .innerText to preserve line breaks from the textarea
+                    outputTextElement.innerText = conflictText; 
+                    displayWrapper.classList.remove('hidden');
+                    
+                    // Do the button animation
+                    submitConflictBtn.textContent = 'Submitted!';
+                    submitConflictBtn.disabled = true;
+                    setTimeout(() => {
+                        submitConflictBtn.textContent = 'Submit';
+                        submitConflictBtn.disabled = false;
+                    }, 2000); // Reset after 2 seconds
+                } else {
+                     // If no text, just give visual feedback and don't show the box
+                    displayWrapper.classList.add('hidden'); // Ensure it's hidden
+                    submitConflictBtn.textContent = 'Please enter text!';
+                    submitConflictBtn.disabled = true;
+                    setTimeout(() => {
+                        submitConflictBtn.textContent = 'Submit';
+                        submitConflictBtn.disabled = false;
+                    }, 2000);
+                }
+            });
+        }
+        // --- END OF MODIFICATION ---
+
+        // --- Event Listeners ---
+        if (analyzeBtn) { analyzeBtn.addEventListener('click', handleAnalysisRequest); }
+        if (modalCloseBtn) { modalCloseBtn.addEventListener('click', () => modal.classList.add('hidden')); }
+        if (modalOverlay) { modalOverlay.addEventListener('click', () => modal.classList.add('hidden')); }
+        
+        // --- Main Category Accordion Functionality ---
+        const categoryHeaders = document.querySelectorAll('.category-header');
+        categoryHeaders.forEach(header => {
+            header.addEventListener('click', () => {
+                const categoryGroup = header.parentElement;
+                categoryGroup.classList.toggle('open');
+            });
+        });
+
+        // --- "Add Reply" Functionality ---
+        function initializeAddReplyButtons() {
+            document.querySelectorAll('.add-reply-btn').forEach(button => {
+                const newButton = button.cloneNode(true);
+                button.parentNode.replaceChild(newButton, button);
+            });
+
+            document.querySelectorAll('.add-reply-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    const questionContent = button.closest('.question-content-visible');
+                    const answersList = questionContent.querySelector('.answers-list');
+                    const replyCount = answersList.querySelectorAll('textarea').length + 1;
+    
+                    const newTextArea = document.createElement('textarea');
+                    newTextArea.className = "w-full p-2 border border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-gray-800 text-white placeholder-gray-500";
+                    newTextArea.rows = 3;
+                    newTextArea.placeholder = `Reply ${replyCount}...`;
+                    
+                    answersList.appendChild(newTextArea);
+                });
+            });
+        }
+        
+        initializeAddReplyButtons();
+
+        
+        /**
+         * Gathers data for the API.
+         */
+        async function handleAnalysisRequest() {
+            resultsSection.classList.remove('hidden');
+            themesDisplay.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            loadingIndicator.classList.remove('hidden');
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            const infoBox = document.getElementById('info-box');
+            if (infoBox) infoBox.style.display = 'none';
+            const hardcodedSeedWords = `
+                - Protagonist: A collective hero comprised of the brand and its audience, unified in their commitment to a core moral value and their fight against a defined 'darkness' or antagonist.
+                - Antagonist: Not a specific person or competitor, but the opposing ideology, societal norm, or abstract concept that the protagonist is morally committed to fighting against. The conflict is a battle between two worldviews (e.g., Creativity vs. Conformity).
+                - Magic: The specific, real-world 'how' or methodology the protagonist uses to combat the antagonist. It is not supernatural, but the unique tool, skill, or process that empowers them (e.g., for a brand promoting critical thinking, the 'magic' could be 'learning').
+                - Society: Refers specifically to the self-contained universe or 'brand world' being created, with its own distinct history, rules, norms, and conflicts, separate from society at large.
+                - Value: Refers exclusively to the core moral, ethical, and philosophical principles the protagonist stands for. It is the moral currency of the brand world that the audience aligns with for personal identity and social signaling, not a functional or monetary benefit.
+            `.trim();
+            const categoryElements = document.querySelectorAll('.category-group');
+            const categories = Array.from(categoryElements).map((el, index) => ({
+                id: index,
+                name: el.querySelector('.category-header h3').textContent
+            }));
+            const allAnswers = {};
+            let hasAnswers = false;
+            
+            // --- JAVASCRIPT MODIFICATION ---
+            // Get the conflict text first
+            const conflictText = document.getElementById('conflict-definition-textarea').value.trim();
+            
+            categories.forEach(category => {
+                const groupElement = categoryElements[category.id];
+                const questionItems = groupElement.querySelectorAll('.category-content .question-item');
+                allAnswers[category.name] = [];
+                
+                // --- JAVASCRIPT MODIFICATION ---
+                // If this is the "Homeland" category and the conflict text exists, add it as the first answer
+                if (category.name === 'Homeland' && conflictText.length > 0) {
+                    allAnswers[category.name].push({
+                        question: "Core Conflict Definition", // This label will be sent to the AI
+                        answer: conflictText
+                    });
+                    hasAnswers = true; // Mark that we have an answer
+                }
+                
+                questionItems.forEach(item => {
+                    const questionText = item.querySelector('span').textContent.trim();
+                    const allTextAreas = item.querySelectorAll('.answers-list textarea');
+                    const replies = Array.from(allTextAreas)
+                                        .map(ta => ta.value.trim())
+                                        .filter(reply => reply.length > 0);
+                    if (replies.length > 0) {
+                        hasAnswers = true;
+                        const combinedAnswer = replies.join('\n---\n'); 
+                        allAnswers[category.name].push({
+                            question: questionText,
+                            answer: combinedAnswer 
+                        });
+                    }
+                });
+            });
+            
+            // --- JAVASCRIPT MODIFICATION ---
+            // This handles the case where ONLY the conflict text was filled out
+            if (conflictText.length > 0 && !allAnswers['Homeland']) {
+                 allAnswers['Homeland'] = [{
+                    question: "Core Conflict Definition",
+                    answer: conflictText
+                 }];
+                 hasAnswers = true;
+            }
+            // --- END OF JAVASCRIPT MODIFICATIONS ---
+
+            sessionAnswers = allAnswers; 
+            if (!hasAnswers) {
+                showError('Please provide at least one answer to analyze.');
+                return;
+            }
+            const userPrompt = `Fundamental Definitions (Seed Words):\n${hardcodedSeedWords}\n\nStrategic Answers:\n${JSON.stringify(allAnswers, null, 2)}`;
+            try {
+                const result = await callGeminiAPI(userPrompt, categories);
+                renderResults(result, categories);
+            } catch (error) {
+                console.error('API Call Failed:', error);
+                showError(`An error occurred during analysis: ${error.message}. Please check the console for details.`);
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+        
+        async function handleExplanationRequest(event) {
+            const button = event.target;
+            const themeTitle = button.dataset.themeTitle;
+            const themeAnalysis = decodeURIComponent(button.dataset.themeAnalysis); 
+            const modalTitle = document.getElementById('modal-title');
+            const modalContent = document.getElementById('modal-content');
+            modalTitle.textContent = `Sources for "${themeTitle}"`;
+            modalContent.innerHTML = `<div class="flex justify-center"><div class="loader"></div></div>`;
+            modal.classList.remove('hidden');
+            try {
+                const explanation = await callGeminiForExplanation(themeTitle, themeAnalysis, sessionAnswers);
+                modalContent.innerHTML = explanation.replace(/\n/g, '<br>');
+            } catch (error) {
+                console.error("Explanation failed:", error);
+                modalContent.textContent = "Sorry, we couldn't retrieve the sources for this theme.";
+            }
+        }
+
+        async function fetchWithRetry(url, options, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status === 429 || response.status >= 500) {
+                        if (i === retries - 1) throw new Error(`API request failed after ${retries} attempts with status ${response.status}`);
+                        await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+                        continue;
+                    }
+                    return response;
+                } catch (error) {
+                    if (i === retries - 1) throw error;
+                    await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+                }
+            }
+        }
+
+        async function callGeminiAPI(userQuery, categories) {
+             const apiKey = ""; // <--- KEY 1
+             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+             const systemPrompt = `You are an expert brand strategist... (rest of prompt is unchanged)`;
+             const schemaProperties = { /* ... (schema is unchanged) ... */ };
+             const payload = { /* ... (payload is unchanged) ... */ };
+             const response = await fetchWithRetry(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+             if (!response.ok) { const errorBody = await response.text(); throw new Error(`API request failed with status ${response.status}: ${errorBody}`); }
+             const result = await response.json();
+             const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+             if (!jsonText) throw new Error("Invalid response structure from API.");
+             return JSON.parse(jsonText);
+         }
+
+        async function callGeminiForExplanation(themeTitle, themeAnalysis, allAnswers) {
+            const apiKey = ""; // <--- KEY 2
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+            const systemPrompt = `You are a helpful analyst... (rest of prompt is unchanged)`;
+            const userPrompt = `Theme Title: "${themeTitle}"... (rest of "prompt is unchanged")`;
+            const payload = { /* ... (payload is unchanged) ... */ };
+            const response = await fetchWithRetry(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) { const errorBody = await response.text(); throw new Error(`API request failed with status ${response.status}: ${errorBody}`); }
+            const result = await response.json();
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error("Could not get an explanation.");
+            return text;
+        }
+
+        function renderResults(data, categories) {
+            initAndDrawConstellation3D(data);
+            document.getElementById('ws-socio-political').textContent = data.world_setting.socio_political;
+            document.getElementById('ws-historical').textContent = data.world_setting.historical;
+            document.getElementById('ws-economic').textContent = data.world_setting.economic;
+            document.getElementById('ws-crime').textContent = data.world_setting.crime_and_justice;
+            document.getElementById('ws-society').textContent = data.world_setting.society_and_culture;
+            const categoryContainer = document.getElementById('category-themes-container');
+            const categoryHtml = data.category_themes.map(cat => `
+                <div class="mb-8 category-group-render">
+                    <h3 class="text-2xl font-bold text-center mb-6 text-white">${cat.category_name} Themes</h3>
+                    <div class="grid md:grid-cols-3 gap-6">
+                        ${cat.themes.map(theme => `
+                            <div class="bg-gray-800 border border-gray-700 p-6 rounded-xl shadow-sm theme-card">
+                                <h4 class="text-lg font-bold text-white">${theme.title}</h4>
+                                <p class="text-gray-300 mt-3 text-sm leading-relaxed">${theme.analysis}</p>
+                                <div class="text-right mt-4">
+                                    <button class="explain-btn text-blue-400 hover:underline text-xs font-semibold" 
+                                        data-theme-title="${theme.title}" 
+                                        data-theme-analysis="${encodeURIComponent(theme.analysis)}">
+                                        Show Sources
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+            categoryContainer.innerHTML = categoryHtml;
+            document.getElementById('ot-myth').textContent = data.overarching_themes.prevailing_myth;
+            document.getElementById('ot-agency').textContent = data.overarching_themes.earned_agency;
+            document.getElementById('ot-rituals').textContent = data.overarching_themes.rituals_of_belonging;
+            document.getElementById('glimpse-text').textContent = data.glimpse_into_world;
+            const exportBtn = document.getElementById('export-btn');
+            if (exportBtn) { exportBtn.addEventListener('click', exportResults); }
+            document.querySelectorAll('.explain-btn').forEach(btn => {
+                btn.addEventListener('click', handleExplanationRequest);
+            });
+            themesDisplay.classList.remove('hidden');
+        }
+
+        function initAndDrawConstellation3D(data) {
+            try { 
+                const container = document.getElementById('constellation-canvas-container');
+                if (!container) return;
+                container.innerHTML = ''; 
+                container.innerHTML = `<div id="info-box" style="display: none;"><div id="info-box-close">&times;</div><h4 id="info-box-title"></h4><p id="info-box-analysis"></p></div>`;
+                const infoBox = document.getElementById('info-box');
+                const infoBoxClose = document.getElementById('info-box-close');
+                const infoBoxTitle = document.getElementById('info-box-title');
+                const infoBoxAnalysis = document.getElementById('info-box-analysis');
+                if(infoBoxClose) { infoBoxClose.addEventListener('click', () => { if (infoBox) infoBox.style.display = 'none'; }); }
+                const rect = container.getBoundingClientRect();
+                const width = rect.width;
+                const height = rect.height;
+                const scene = new THREE.Scene();
+                const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 2000);
+                camera.position.z = 50;
+                const renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(width, height);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                container.appendChild(renderer.domElement);
+                const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                scene.add(new THREE.AmbientLight(0x404040, 0.3));
+                const sunLight = new THREE.PointLight(0xffffff, 2, 1000);
+                scene.add(sunLight);
+                const starGeometry = new THREE.BufferGeometry();
+                const starVertices = [];
+                for (let i = 0; i < 15000; i++) {
+                    const x = (Math.random() - 0.5) * 2000;
+                    const y = (Math.random() - 0.5) * 2000;
+                    const z = (Math.random() - 0.5) * 2000;
+                    starVertices.push(x, y, z);
+                }
+                starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+                const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 });
+                const stars = new THREE.Points(starGeometry, starMaterial);
+                scene.add(stars);
+                const raycaster = new THREE.Raycaster();
+                const mouse = new THREE.Vector2();
+                let clickableObjects = []; 
+                function onMouseClick(event) {
+                    const bounds = container.getBoundingClientRect();
+                    mouse.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+                    mouse.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(clickableObjects);
+                    if (intersects.length > 0) {
+                        const clickedObject = intersects[0].object;
+                        const data = clickedObject.userData;
+                        if(infoBoxTitle) infoBoxTitle.textContent = data.title;
+                        if(infoBoxAnalysis) infoBoxAnalysis.textContent = data.analysis;
+                        if(infoBox) infoBox.style.display = 'block';
+                    }
+                }
+                container.addEventListener('click', onMouseClick);
+                function createCelestialBody(radius, color, isEmissive = false) {
+                    const geometry = new THREE.SphereGeometry(radius, 32, 32);
+                    let material;
+                    if (isEmissive) { material = new THREE.MeshBasicMaterial({ color: color, emissive: color, emissiveIntensity: 3 }); }
+                    else { material = new THREE.MeshStandardMaterial({ color: color, metalness: 0.3, roughness: 0.5 }); }
+                    return new THREE.Mesh(geometry, material);
+                }
+                const solarSystem = new THREE.Group();
+                scene.add(solarSystem);
+                const planetGroups = []; 
+                const findCategory = (name) => data.category_themes.find(c => c.category_name === name);
+                const homeland = findCategory('Homeland');
+                const hierarchy = findCategory('Hierarchy');
+                const habitat = findCategory('Habitat');
+                const sunData = (homeland && homeland.themes && homeland.themes[0]) ? homeland.themes[0] : { title: "Core Belief (No Data)", analysis: "Please fill in the 'Homeland' questions." };
+                const sun = createCelestialBody(5, 0xffeb3b, true); 
+                sun.userData = { title: sunData.title, analysis: sunData.analysis };
+                solarSystem.add(sun);
+                clickableObjects.push(sun);
+                const threatData = (homeland && homeland.themes && homeland.themes[1]) ? homeland.themes[1] : { title: "Externalized Threat (No Data)", analysis: "Please fill in the 'Homeland' questions." };
+                const threat = createCelestialBody(1, 0xff4d4d); 
+                threat.userData = { title: threatData.title, analysis: threatData.analysis };
+                threat.position.set(10, 0, 0);
+                solarSystem.add(threat);
+                clickableObjects.push(threat);
+                const planetData = [
+                    { data: data.overarching_themes.prevailing_myth, title: "Prevailing Myth", color: 0x5d88ff, moons: (homeland && homeland.themes) ? homeland.themes.slice(2) : [] },
+                    { data: data.overarching_themes.earned_agency, title: "Earned Agency", color: 0x30feba, moons: (hierarchy && hierarchy.themes) ? hierarchy.themes : [] }, 
+                    { data: data.overarching_themes.rituals_of_belonging, title: "Rituals of Belonging", color: 0xac4fff, moons: (habitat && habitat.themes) ? habitat.themes : [] }
+                ];
+                planetData.forEach((planetInfo, i) => {
+                    const planetGroup = new THREE.Group();
+                    const planetRadius = 2.5;
+                    const planet = createCelestialBody(planetRadius, planetInfo.color);
+                    planet.userData = { title: planetInfo.title, analysis: planetInfo.data };
+                    planetGroup.add(planet);
+                    clickableObjects.push(planet);
+                    if (planetInfo.moons) {
+                        planetInfo.moons.forEach((moonData, j) => {
+                            const moonRadius = 0.5;
+                            const moonOrbitRadius = planetRadius + 2 + j * 1.5;
+                            const moon = createCelestialBody(moonRadius, planetInfo.color); 
+                            moon.userData = { title: moonData.title, analysis: moonData.analysis };
+                            const moonPivot = new THREE.Group();
+                            moon.position.set(moonOrbitRadius, 0, 0);
+                            moonPivot.add(moon);
+                            clickableObjects.push(moon);
+                            moonPivot.rotation.z = Math.random() * Math.PI;
+                            moonPivot.rotation.y = Math.random() * Math.PI;
+                            planet.add(moonPivot);
+                        });
+                    }
+                    const planetOrbitRadius = 15 + i * 15;
+                    planetGroup.position.set(planetOrbitRadius, 0, 0);
+                    const planetOrbitPivot = new THREE.Group();
+                    planetOrbitPivot.add(planetGroup);
+                    planetOrbitPivot.rotation.y = Math.random() * Math.PI * 2;
+                    solarSystem.add(planetOrbitPivot);
+                    planetGroups.push({ planet: planet, planetOrbit: planetOrbitPivot, moonPivots: planet.children.filter(c => c.type === 'Group') });
+                });
+                const clock = new THREE.Clock();
+                function animate() {
+                    animationFrameId = requestAnimationFrame(animate);
+                    const delta = clock.getElapsedTime();
+                    sun.rotation.y += 0.001;
+                    threat.rotation.y += 0.005;
+                    threat.position.x = 20 * Math.cos(delta * 0.1) + 10;
+                    threat.position.z = 15 * Math.sin(delta * 0.1);
+                    threat.position.y = 5 * Math.sin(delta * 0.5);
+                    planetGroups.forEach((group, i) => {
+                        group.planetOrbit.rotation.y += 0.0005 * (4 - i);
+                        group.planet.rotation.y += 0.005;
+                        group.moonPivots.forEach((pivot, j) => {
+                            pivot.rotation.y += 0.005 * (j + 1);
+                        });
+                    });
+                    controls.update();
+                    renderer.render(scene, camera);
+                }
+                animate();
+                window.addEventListener('resize', () => {
+                    const newRect = container.getBoundingClientRect();
+                    if (newRect.width > 0 && newRect.height > 0) {
+                        camera.aspect = newRect.width / newRect.height;
+                        camera.updateProjectionMatrix();
+                        renderer.setSize(newRect.width, newRect.height);
+                    }
+                });
+            } catch (error) {
+                console.error("Error during 3D initialization:", error);
+                showError(`A 3D rendering error occurred: ${error.message}. This can happen if the AI response was missing expected data.`);
+            }
+        }
+        
+        function exportResults() {
+            let textContent = "Thematic Analysis Results\n";
+            textContent += "=============================\n\n";
+            const settingTitle = document.querySelector('#world-setting-section h3').textContent;
+            textContent += `--- ${settingTitle} ---\n`;
+            textContent += `${document.querySelector('#ws-socio-political').parentElement.textContent}\n`;
+            textContent += `${document.querySelector('#ws-historical').parentElement.textContent}\n`;
+            textContent += `${document.querySelector('#ws-economic').parentElement.textContent}\n`;
+            textContent += `${document.querySelector('#ws-crime').parentElement.textContent}\n`;
+            textContent += `${document.querySelector('#ws-society').parentElement.textContent}\n`;
+            document.querySelectorAll('.category-group-render').forEach(group => {
+                 const catTitle = group.querySelector('h3').textContent;
+                 textContent += `\n\n--- ${catTitle} ---\n`;
+                 group.querySelectorAll('.theme-card').forEach(card => {
+                    const title = card.querySelector('h4').textContent;
+                    const analysis = card.querySelector('p').textContent;
+                    textContent += `\n* ${title} *\n${analysis}\n`;
+                 });
+            });
+            textContent += "\n\nOverarching Holistic Themes\n";
+            textContent += "-----------------------------\n";
+            document.querySelectorAll('.overarching-theme-card').forEach(card => {
+                const title = card.querySelector('h4').textContent;
+                const analysis = card.querySelector('p').textContent;
+                textContent += `\n### ${title} ###\n${analysis}\n`;
+            });
+            const glimpseTitle = document.querySelector('#glimpse-section h3').textContent;
+            const glimpseText = document.querySelector('#glimpse-section p').textContent;
+            textContent += `\n\n--- ${glimpseTitle} ---\n${glimpseText}\n`;
+            const blob = new Blob([textContent], { type: 'text/plain' });
+            const anchor = document.createElement('a');
+            anchor.download = 'thematic-analysis-results.txt';
+            anchor.href = window.URL.createObjectURL(blob);
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+            loadingIndicator.classList.add('hidden');
+        }
+    
+    });
+    </script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const container = document.getElementById('hero-grid-panel');
+        const statusEl = document.getElementById('glb-status');
+        if (!container || !window.THREE || !THREE.GLTFLoader) {
+            if (statusEl) statusEl.textContent = 'Three.js or GLTFLoader not available.';
+            return;
+        }
+
+        const scene = new THREE.Scene();
+        scene.background = null;
+
+        const camera = new THREE.PerspectiveCamera(
+            35,
+            container.clientWidth / container.clientHeight || 1,
+            0.1,
+            100
+        );
+        camera.position.set(0, 0, 6);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setClearColor(0x000000, 0);
+        container.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambientLight);
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        keyLight.position.set(3, 4, 6);
+        scene.add(keyLight);
+        const rimLight = new THREE.DirectionalLight(0x8b5cf6, 1.3);
+        rimLight.position.set(-4, 2, -3);
+        scene.add(rimLight);
+
+        const loader = new THREE.GLTFLoader();
+
+        loader.load(
+            'Conflict.glb',
+            function (gltf) {
+                let obj = gltf.scene || gltf.scenes[0];
+                if (!obj) {
+                    if (statusEl) statusEl.textContent = 'Conflict.glb loaded but no scene found.';
+                    return;
+                }
+
+                const box = new THREE.Box3().setFromObject(obj);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                const maxAxis = Math.max(size.x, size.y, size.z) || 1;
+                const scale = 2.4 / maxAxis;
+                obj.scale.setScalar(scale);
+
+                box.setFromObject(obj);
+                const center = box.getCenter(new THREE.Vector3());
+                obj.position.sub(center);
+
+                obj.traverse(function (child) {
+                    if (child.isMesh && !child.material) {
+                        child.material = new THREE.MeshStandardMaterial({
+                            color: 0x7c3aed,
+                            metalness: 0.4,
+                            roughness: 0.3
+                        });
+                    }
+                });
+
+                scene.add(obj);
+
+                if (statusEl) statusEl.style.display = 'none';
+
+                const clock = new THREE.Clock();
+                function animate() {
+                    requestAnimationFrame(animate);
+                    const t = clock.getElapsedTime();
+                    obj.rotation.y = t * 0.4;
+                    obj.rotation.x = Math.sin(t * 0.5) * 0.3;
+                    renderer.render(scene, camera);
+                }
+                animate();
+            },
+            undefined,
+            function (err) {
+                console.error('Error loading Conflict.glb', err);
+                if (statusEl) {
+                    statusEl.textContent = 'Could not load Conflict.glb. Make sure it is in the same folder as index.html.';
+                    statusEl.style.color = '#f97373';
+                }
+            }
+        );
+
+        window.addEventListener('resize', function () {
+            const width = container.clientWidth;
+            const height = container.clientHeight || width || 1;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+    });
+    </script>
+</body>
+</html>
